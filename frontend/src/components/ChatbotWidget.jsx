@@ -19,7 +19,7 @@ const ChatbotWidget = () => {
     setInput('');
 
     try {
-      const res = await fetch('https://potential-space-fortnight-x5p74p6qv76xf67pg-8000.app.github.dev/chat', {
+      const res = await fetch('https://obscure-space-chainsaw-pjw46wvqp44p2764v-8000.app.github.dev/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: input })

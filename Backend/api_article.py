@@ -8,8 +8,13 @@ from urllib.parse import urlparse
 from models.summarization import GeminiSummarizationModel
 from pydantic import BaseModel
 import asyncio
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 app = FastAPI()
+
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
 # ✅ Must come right after app creation
 app.add_middleware(
@@ -229,7 +234,7 @@ async def get_all(url: str = Form(...)):
 
     if title:
         text = '"' + content + '"'
-        geminiModel = GeminiSummarizationModel("AIzaSyAqA8qHNtScjH-LPz8Oh0NRwqfFSsRSjo4")
+        geminiModel = GeminiSummarizationModel(GEMINI_API_KEY)
         summary = geminiModel.function_call(text)#get_summary(text)
         print(summary)
         tags = "get_tags(text)"

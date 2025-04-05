@@ -157,7 +157,10 @@ pip install -r requirements.txt
 ```bash
 uvicorn api_article:app --reload
 ```
-
+#### [OPTIONAL] Establish local tunnel is using Github Codespace
+```bash
+gh codespace ports visibility 8000:public
+```
 ## Usage
 
 #### Visit the frontend application:
