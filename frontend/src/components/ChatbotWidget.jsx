@@ -8,35 +8,17 @@ const ChatbotWidget = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
+
   const recognitionRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sourceRef = useRef(null);
+
   const location = useLocation();
   const navigate = useNavigate();
-
-  // Voice setup
-  useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'en-US';
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-
-      recognition.onstart = () => setIsListening(true);
-      recognition.onend = () => setIsListening(false);
-      recognition.onerror = (e) => {
-        console.error('🎙️ Speech recognition error:', e);
-        setIsListening(false);
-      };
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(transcript);
-        sendMessage(transcript); // Auto-send voice input
-      };
-
-      recognitionRef.current = recognition;
-    }
-  }, []);
 
   const sendMessage = async (msgText = input) => {
     if (!msgText.trim()) return;
@@ -62,7 +44,6 @@ const ChatbotWidget = () => {
       };
 
       setMessages((prev) => [...prev, userBotMessage]);
-
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -71,14 +52,94 @@ const ChatbotWidget = () => {
     }
   };
 
-  const handleStartTour = async (page) => {
-    let redirect_page = page === "navbar" ? "" : page;
+  const handleStartTour = (page) => {
+    const redirect_page = page === 'navbar' ? '' : page;
     if (location.pathname !== `/${redirect_page}`) {
       navigate(`/${redirect_page}`);
       setTimeout(() => startTour(redirect_page), 500);
     } else {
       startTour(redirect_page);
     }
+  };
+
+  const drawWaveform = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const analyser = analyserRef.current;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const draw = () => {
+      animationRef.current = requestAnimationFrame(draw);
+      analyser.getByteTimeDomainData(dataArray);
+
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'purple';
+
+      ctx.beginPath();
+      const sliceWidth = canvas.width / bufferLength;
+      let x = 0;
+
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * canvas.height) / 2;
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+
+        x += sliceWidth;
+      }
+
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+    };
+
+    draw();
+  };
+
+  const startListening = async () => {
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => stopListening();
+    recognition.onerror = (e) => {
+      console.error('Speech recognition error:', e);
+      stopListening();
+    };
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+      sendMessage(transcript);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    analyserRef.current = audioContextRef.current.createAnalyser();
+    sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
+    sourceRef.current.connect(analyserRef.current);
+
+    drawWaveform();
+  };
+
+  const stopListening = () => {
+    setIsListening(false);
+    recognitionRef.current?.stop();
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (audioContextRef.current) audioContextRef.current.close();
   };
 
   useEffect(() => {
@@ -122,6 +183,23 @@ const ChatbotWidget = () => {
             <div ref={messagesEndRef} />
           </div>
 
+          {isListening && (
+            <div className="px-3 pb-2">
+              <canvas
+                ref={canvasRef}
+                width={250}
+                height={60}
+                className="border rounded mb-2"
+              />
+              <button
+                onClick={stopListening}
+                className="text-xs text-red-600 border border-red-500 px-2 py-1 rounded hover:bg-red-100 w-full"
+              >
+                Stop Listening
+              </button>
+            </div>
+          )}
+
           <div className="p-2 border-t flex items-center gap-2">
             <input
               type="text"
@@ -131,10 +209,9 @@ const ChatbotWidget = () => {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
             />
-            {/* 🎤 Voice Input Button */}
             {'webkitSpeechRecognition' in window || 'SpeechRecognition' in window ? (
               <button
-                onClick={() => recognitionRef.current?.start()}
+                onClick={startListening}
                 className={`text-xl px-2 ${
                   isListening ? 'text-red-500 animate-pulse' : 'text-gray-600'
                 }`}
@@ -143,7 +220,6 @@ const ChatbotWidget = () => {
                 🎤
               </button>
             ) : null}
-
             <button
               onClick={() => sendMessage()}
               className="bg-purple-700 text-white text-sm px-3 py-1 rounded hover:bg-purple-600"
