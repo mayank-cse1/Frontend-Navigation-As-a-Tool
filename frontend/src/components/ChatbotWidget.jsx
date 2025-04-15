@@ -8,14 +8,15 @@ const ChatbotWidget = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [voiceInput, setVoiceInput] = useState('');
 
   const recognitionRef = useRef(null);
-  const messagesEndRef = useRef(null);
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const sourceRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -105,22 +106,26 @@ const ChatbotWidget = () => {
   const startListening = async () => {
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) return;
 
+    setVoiceInput('');
+    setIsListening(true);
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = 'en-US';
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => stopListening();
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript + ' ';
+      }
+      setVoiceInput(transcript.trim());
+    };
+
     recognition.onerror = (e) => {
       console.error('Speech recognition error:', e);
       stopListening();
-    };
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(transcript);
-      sendMessage(transcript);
     };
 
     recognitionRef.current = recognition;
@@ -136,10 +141,24 @@ const ChatbotWidget = () => {
   };
 
   const stopListening = () => {
-    setIsListening(false);
     recognitionRef.current?.stop();
+    setIsListening(false);
+
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
     if (audioContextRef.current) audioContextRef.current.close();
+  };
+
+  const cancelVoice = () => {
+    stopListening();
+    setVoiceInput('');
+  };
+
+  const confirmVoice = () => {
+    if (voiceInput.trim()) {
+      setInput(voiceInput); //sendMessage(voiceInput);
+    }
+    stopListening();
+    setVoiceInput('');
   };
 
   useEffect(() => {
@@ -184,19 +203,30 @@ const ChatbotWidget = () => {
           </div>
 
           {isListening && (
-            <div className="px-3 pb-2">
+            <div className="px-3 pb-2 flex flex-col gap-2 items-center">
               <canvas
                 ref={canvasRef}
-                width={250}
+                width={240}
                 height={60}
-                className="border rounded mb-2"
+                className="border rounded"
               />
-              <button
-                onClick={stopListening}
-                className="text-xs text-red-600 border border-red-500 px-2 py-1 rounded hover:bg-red-100 w-full"
-              >
-                Stop Listening
-              </button>
+              <p className="text-xs text-gray-500 text-center">
+                🎙️ Listening... Say your message
+              </p>
+              <div className="flex gap-4">
+                <button
+                  onClick={confirmVoice}
+                  className="bg-green-600 text-white px-4 py-1 text-sm rounded hover:bg-green-700"
+                >
+                  ✅ Send
+                </button>
+                <button
+                  onClick={cancelVoice}
+                  className="bg-red-600 text-white px-4 py-1 text-sm rounded hover:bg-red-700"
+                >
+                  ❌ Cancel
+                </button>
+              </div>
             </div>
           )}
 
@@ -212,6 +242,7 @@ const ChatbotWidget = () => {
             {'webkitSpeechRecognition' in window || 'SpeechRecognition' in window ? (
               <button
                 onClick={startListening}
+                disabled={isListening}
                 className={`text-xl px-2 ${
                   isListening ? 'text-red-500 animate-pulse' : 'text-gray-600'
                 }`}
