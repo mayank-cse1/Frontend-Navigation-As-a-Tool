@@ -1,20 +1,47 @@
 import { useState, useEffect, useRef } from 'react';
-import { redirect, useLocation, useNavigate } from 'react-router-dom';
-import startTour from './startTour'; // 🔥 Importing your tour utility
+import { useLocation, useNavigate } from 'react-router-dom';
+import startTour from './startTour';
 import 'shepherd.js/dist/css/shepherd.css';
 
 const ChatbotWidget = () => {
   const [chatOpen, setChatOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
   const messagesEndRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  // Voice setup
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
 
-    const userMsg = { text: input, sender: 'user' };
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = (e) => {
+        console.error('🎙️ Speech recognition error:', e);
+        setIsListening(false);
+      };
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setInput(transcript);
+        sendMessage(transcript); // Auto-send voice input
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  const sendMessage = async (msgText = input) => {
+    if (!msgText.trim()) return;
+
+    const userMsg = { text: msgText, sender: 'user' };
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
 
@@ -22,18 +49,16 @@ const ChatbotWidget = () => {
       const res = await fetch('http://localhost:8000/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input })
+        body: JSON.stringify({ message: msgText })
       });
 
       const data = await res.json();
 
-      const isTour = data.tour_required;
-
       const userBotMessage = {
         text: data.reply || 'No response received.',
         sender: 'bot',
-        isTour: isTour,
-        tourPage: data.tour // 👈 dynamic page name e.g., "analyze"
+        isTour: data.tour_required,
+        tourPage: data.tour
       };
 
       setMessages((prev) => [...prev, userBotMessage]);
@@ -47,15 +72,12 @@ const ChatbotWidget = () => {
   };
 
   const handleStartTour = async (page) => {
-    let redirect_page = page
-    if (page == "navbar"){
-        redirect_page = ""
-    }
+    let redirect_page = page === "navbar" ? "" : page;
     if (location.pathname !== `/${redirect_page}`) {
       navigate(`/${redirect_page}`);
-      setTimeout(() => startTour(redirect_page), 500); // small delay after navigation
+      setTimeout(() => startTour(redirect_page), 500);
     } else {
-      startTour(redirect_page); // if already on the same page
+      startTour(redirect_page);
     }
   };
 
@@ -85,17 +107,16 @@ const ChatbotWidget = () => {
                 }`}
               >
                 <div className="chat-message">
-                    <p>{msg.text}</p>
-
-                    {msg.isTour && (
-                        <button
-                        onClick={() => handleStartTour(msg.tourPage)}
-                        className="mt-2 bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-                        >
-                        Start Tour 🚀
-                        </button>
-                    )}
-                    </div>
+                  <p>{msg.text}</p>
+                  {msg.isTour && (
+                    <button
+                      onClick={() => handleStartTour(msg.tourPage)}
+                      className="mt-2 bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                    >
+                      Start Tour 🚀
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
             <div ref={messagesEndRef} />
@@ -110,8 +131,21 @@ const ChatbotWidget = () => {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
             />
+            {/* 🎤 Voice Input Button */}
+            {'webkitSpeechRecognition' in window || 'SpeechRecognition' in window ? (
+              <button
+                onClick={() => recognitionRef.current?.start()}
+                className={`text-xl px-2 ${
+                  isListening ? 'text-red-500 animate-pulse' : 'text-gray-600'
+                }`}
+                title="Speak your question"
+              >
+                🎤
+              </button>
+            ) : null}
+
             <button
-              onClick={sendMessage}
+              onClick={() => sendMessage()}
               className="bg-purple-700 text-white text-sm px-3 py-1 rounded hover:bg-purple-600"
             >
               Send
